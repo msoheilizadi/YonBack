@@ -1,15 +1,18 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const User = require('../models/User');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const User = require("../models/User");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+
+const { protect } = require('../middleware/authMiddleware');
 
 // ثبت‌نام
-router.post('/register', async (req, res) => {
+router.post("/register", async (req, res) => {
   const { name, email, password } = req.body;
   try {
     const userExists = await User.findOne({ where: { email } });
-    if (userExists) return res.status(400).json({ message: 'User already exists' });
+    if (userExists)
+      return res.status(400).json({ message: "User already exists" });
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -28,7 +31,7 @@ router.post('/register', async (req, res) => {
 });
 
 // لاگین
-router.post('/login', async (req, res) => {
+router.post("/login", async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await User.findOne({ where: { email } });
@@ -42,36 +45,19 @@ router.post('/login', async (req, res) => {
         token: generateToken(user.id),
       });
     } else {
-      res.status(401).json({ message: 'Invalid email or password' });
+      res.status(401).json({ message: "Invalid email or password" });
     }
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
-};
-
-// --- میدل‌ور برای بررسی توکن (Authentication Middleware) ---
-const protect = async (req, res, next) => {
-  let token;
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    try {
-      token = req.headers.authorization.split(' ')[1]; // جدا کردن Bearer از توکن
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findByPk(decoded.id); // پیدا کردن کاربر
-      next();
-    } catch (error) {
-      res.status(401).json({ message: 'Not authorized, token failed' });
-    }
-  } else {
-    res.status(401).json({ message: 'Not authorized, no token' });
-  }
-};
+function generateToken(id) {
+  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
+}
 
 // --- روت آپدیت پروفایل ---
-router.put('/update-profile', protect, async (req, res) => {
+router.put("/update-profile", protect, async (req, res) => {
   try {
     const user = req.user; // کاربری که از طریق protect پیدا شد
 
@@ -79,9 +65,10 @@ router.put('/update-profile', protect, async (req, res) => {
       user.name = req.body.name || user.name;
       user.mobile = req.body.mobile || user.mobile;
       user.language = req.body.language || user.language;
-      user.notificationTime = req.body.notificationTime || user.notificationTime;
-      
-      // نکته: برای آپلود عکس واقعی نیاز به کتابخانه multer دارید. 
+      user.notificationTime =
+        req.body.notificationTime || user.notificationTime;
+
+      // نکته: برای آپلود عکس واقعی نیاز به کتابخانه multer دارید.
       // فعلا فرض میکنیم عکس به صورت رشته (Base64 یا لینک) ارسال میشود.
       if (req.body.profileImage) {
         user.profileImage = req.body.profileImage;
@@ -100,7 +87,30 @@ router.put('/update-profile', protect, async (req, res) => {
         token: generateToken(updatedUser.id), // ارسال توکن جدید (اختیاری)
       });
     } else {
-      res.status(404).json({ message: 'User not found' });
+      res.status(404).json({ message: "User not found" });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// دریافت اطلاعات پروفایل کاربر لاگین شده
+router.get("/profile", protect, async (req, res) => {
+  try {
+    const user = req.user;
+    if (user) {
+      res.json({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        mobile: user.mobile,
+        language: user.language,
+        profileImage: user.profileImage,
+        notificationTime: user.notificationTime,
+        // نکته: توکن را اینجا نمی‌فرستیم چون کاربر توکن دارد
+      });
+    } else {
+      res.status(404).json({ message: "User not found" });
     }
   } catch (error) {
     res.status(500).json({ message: error.message });
