@@ -3,20 +3,68 @@ const router = express.Router();
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { protect } = require("../middleware/authMiddleware");
 
-const { protect } = require('../middleware/authMiddleware');
+// --- 1. تنظیمات آپلود روی لیارا (S3) با AWS SDK v3 ---
+const multer = require("multer");
+const multerS3 = require("multer-s3");
+const { S3Client } = require("@aws-sdk/client-s3"); // 👈 ایمپورت جدید
+const path = require("path");
+
+const s3 = new S3Client({
+  region: "default", // S3Client ورژن ۳ به این فیلد نیاز دارد (میتوانید همین default بگذارید)
+  endpoint: process.env.LIARA_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.LIARA_ACCESS_KEY,
+    secretAccessKey: process.env.LIARA_SECRET_KEY,
+  },
+});
+
+const upload = multer({
+  storage: multerS3({
+    s3: s3,
+    bucket: process.env.LIARA_BUCKET_NAME,
+    acl: "public-read", // اجازه میدهد عکس در اپلیکیشن نمایش داده شود
+    key: function (req, file, cb) {
+      cb(
+        null,
+        `profiles/user-${req.user.id}-${Date.now()}${path.extname(file.originalname)}`,
+      );
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 }, // محدودیت حجم ۵ مگابایت
+  fileFilter: function (req, file, cb) {
+    const filetypes = /jpeg|jpg|png/;
+    const extname = filetypes.test(
+      path.extname(file.originalname).toLowerCase(),
+    );
+    const mimetype = filetypes.test(file.mimetype);
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error("فقط تصاویر (jpeg, jpg, png) مجاز هستند!"));
+    }
+  },
+});
+// ----------------------------------------
 
 // ثبت‌نام
 router.post("/register", async (req, res) => {
   const { name, email, password } = req.body;
   try {
+    if (!name || !email || !password)
+      return res.status(400).json({ message: "لطفاً تمام فیلدها را پر کنید" });
+    if (password.length < 6)
+      return res
+        .status(400)
+        .json({ message: "رمز عبور باید حداقل ۶ کاراکتر باشد" });
+
     const userExists = await User.findOne({ where: { email } });
     if (userExists)
-      return res.status(400).json({ message: "User already exists" });
+      return res.status(400).json({ message: "این ایمیل قبلاً ثبت شده است" });
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-
     const user = await User.create({ name, email, password: hashedPassword });
 
     res.status(201).json({
@@ -35,7 +83,6 @@ router.post("/login", async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await User.findOne({ where: { email } });
-
     if (user && (await bcrypt.compare(password, user.password))) {
       res.json({
         id: user.id,
@@ -56,45 +103,49 @@ function generateToken(id) {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
 }
 
-// --- روت آپدیت پروفایل ---
-router.put("/update-profile", protect, async (req, res) => {
-  try {
-    const user = req.user; // کاربری که از طریق protect پیدا شد
+// --- 2. روت آپدیت پروفایل با قابلیت آپلود فایل ---
+router.put(
+  "/update-profile",
+  protect,
+  upload.single("profileImage"),
+  async (req, res) => {
+    try {
+      const user = req.user;
 
-    if (user) {
-      user.name = req.body.name || user.name;
-      user.mobile = req.body.mobile || user.mobile;
-      user.language = req.body.language || user.language;
-      user.notificationTime =
-        req.body.notificationTime || user.notificationTime;
+      if (user) {
+        user.name = req.body.name || user.name;
+        user.mobile = req.body.mobile || user.mobile;
+        user.language = req.body.language || user.language;
+        user.notificationTime =
+          req.body.notificationTime || user.notificationTime;
 
-      // نکته: برای آپلود عکس واقعی نیاز به کتابخانه multer دارید.
-      // فعلا فرض میکنیم عکس به صورت رشته (Base64 یا لینک) ارسال میشود.
-      if (req.body.profileImage) {
-        user.profileImage = req.body.profileImage;
+        // دریافت لینک عکس از لیارا و ذخیره در دیتابیس
+        if (req.file) {
+          user.profileImage = req.file.location;
+        }
+
+        const updatedUser = await user.save();
+
+        res.json({
+          id: updatedUser.id,
+          name: updatedUser.name,
+          email: updatedUser.email,
+          mobile: updatedUser.mobile,
+          language: updatedUser.language,
+          notificationTime: updatedUser.notificationTime,
+          profileImage: updatedUser.profileImage,
+          token: generateToken(updatedUser.id),
+        });
+      } else {
+        res.status(404).json({ message: "User not found" });
       }
-
-      const updatedUser = await user.save();
-
-      res.json({
-        id: updatedUser.id,
-        name: updatedUser.name,
-        email: updatedUser.email,
-        mobile: updatedUser.mobile,
-        language: updatedUser.language,
-        notificationTime: updatedUser.notificationTime,
-        profileImage: updatedUser.profileImage,
-        token: generateToken(updatedUser.id), // ارسال توکن جدید (اختیاری)
-      });
-    } else {
-      res.status(404).json({ message: "User not found" });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
     }
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
+  },
+);
 
-// دریافت اطلاعات پروفایل کاربر لاگین شده
+// دریافت اطلاعات پروفایل
 router.get("/profile", protect, async (req, res) => {
   try {
     const user = req.user;
@@ -107,7 +158,6 @@ router.get("/profile", protect, async (req, res) => {
         language: user.language,
         profileImage: user.profileImage,
         notificationTime: user.notificationTime,
-        // نکته: توکن را اینجا نمی‌فرستیم چون کاربر توکن دارد
       });
     } else {
       res.status(404).json({ message: "User not found" });

@@ -3,25 +3,21 @@ const router = express.Router();
 const Song = require('../models/Song');
 const { protect } = require('../middleware/authMiddleware');
 
-// POST: ساخت آهنگ جدید (مثلاً از طریق پنل ادمین یا Postman)
-// چون فایل‌ها روی لیارا آپلود می‌شوند، ما فقط لینک آن‌ها را از بادی (req.body) می‌گیریم
+// POST: ساخت آهنگ جدید
 router.post('/', protect, async (req, res) => {
   try {
-    // گرفتن اطلاعات و لینک‌های لیارا از درخواست
     const { title, subtitle, description, imageUrl, audioUrl, category, duration } = req.body;
     
-    // اعتبارسنجی ساده
     if (!audioUrl || !imageUrl) {
       return res.status(400).json({ message: 'آدرس فایل صوتی یا تصویر ارسال نشده است.' });
     }
 
-    // ذخیره مستقیم در دیتابیس
     const song = await Song.create({
       title,
       subtitle,
       description,
-      imageUrl,  // مثلا: https://yon-assets.storage.iran.liara.space/Cover.jpg
-      audioUrl,  // مثلا: https://yon-assets.storage.iran.liara.space/fyrsta.mp3
+      imageUrl,  
+      audioUrl,  
       category,
       duration
     });
@@ -32,15 +28,34 @@ router.post('/', protect, async (req, res) => {
   }
 });
 
-// GET: دریافت لیست تمام آهنگ‌ها (برای نمایش در اپلیکیشن)
+// GET: دریافت لیست آهنگ‌ها (با قابلیت صفحه‌بندی)
 router.get('/', async (req, res) => {
   try {
+    // ۱. دریافت شماره صفحه و محدودیت از کوئری (با مقادیر پیش‌فرض صفحه ۱ و تعداد ۱۰)
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    
+    // ۲. محاسبه نقطه شروع (Offset)
+    const offset = (page - 1) * limit;
+
     const { category } = req.query;
     const whereClause = category ? { category } : {};
     
-    // خواندن آهنگ‌ها از دیتابیس
-    const songs = await Song.findAll({ where: whereClause });
-    res.json(songs);
+    // ۳. خواندن آهنگ‌ها از دیتابیس به صورت محدود شده
+    const { count, rows } = await Song.findAndCountAll({ 
+      where: whereClause,
+      limit: limit,
+      offset: offset,
+      order: [['createdAt', 'DESC']] // مرتب‌سازی از جدیدترین به قدیمی‌ترین
+    });
+
+    // ۴. ارسال پاسخ استاندارد شامل اطلاعات صفحه‌بندی
+    res.json({
+      totalItems: count, // کل آهنگ‌های موجود در این دسته‌بندی
+      totalPages: Math.ceil(count / limit), // تعداد کل صفحات
+      currentPage: page, // صفحه‌ای که الان در آن هستیم
+      songs: rows // لیست آهنگ‌های این صفحه
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
