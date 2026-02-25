@@ -39,6 +39,10 @@ const User = sequelize.define('User', {
   notificationTime: {
     type: DataTypes.STRING,
     allowNull: true,
+  },
+  activeToken: {
+    type: DataTypes.TEXT, 
+    allowNull: true,
   }
 });
 

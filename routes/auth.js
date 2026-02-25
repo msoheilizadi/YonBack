@@ -75,11 +75,16 @@ router.post("/register", async (req, res) => {
 
     const user = await User.create({ name, email, password: hashedPassword });
 
+    // 👈 بخش جدید: ساخت توکن و ذخیره آن در دیتابیس به عنوان توکن فعال
+    const token = generateToken(user.id);
+    user.activeToken = token;
+    await user.save();
+
     res.status(201).json({
       id: user.id,
       name: user.name,
       email: user.email,
-      token: generateToken(user.id),
+      token: token,
     });
   } catch (error) {
     res.status(500).json({ message: "خطا در سرور هنگام ثبت‌نام" });
@@ -91,13 +96,19 @@ router.post("/login", async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await User.findOne({ where: { email } });
+    
     if (user && (await bcrypt.compare(password, user.password))) {
+      // 👈 بخش جدید: در هر بار ورود، یک توکن جدید می‌سازیم و توکن قبلی را باطل می‌کنیم
+      const token = generateToken(user.id);
+      user.activeToken = token;
+      await user.save();
+
       res.json({
         id: user.id,
         name: user.name,
         email: user.email,
         profileImage: user.profileImage,
-        token: generateToken(user.id),
+        token: token,
       });
     } else {
       res.status(401).json({ message: "ایمیل یا رمز عبور اشتباه است" });
@@ -141,6 +152,7 @@ router.put(
         language: updatedUser.language,
         notificationTime: updatedUser.notificationTime,
         profileImage: updatedUser.profileImage,
+        // توجه: در آپدیت پروفایل نیازی به تغییر توکن فعال نیست
         token: generateToken(updatedUser.id),
       });
     } catch (error) {

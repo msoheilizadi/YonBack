@@ -16,6 +16,13 @@ const protect = async (req, res, next) => {
         return res.status(401).json({ message: 'User no longer exists' });
       }
 
+      // 👈 بخش جدید و بسیار مهم: بررسی مطابقت توکن برای خروج از دستگاه‌های دیگر
+      if (req.user.activeToken !== token) {
+        return res.status(401).json({ 
+          message: 'شما از دستگاه دیگری وارد شده‌اید. نشست فعلی پایان یافت.' 
+        });
+      }
+
       next();
     } catch (error) {
       res.status(401).json({ message: 'Not authorized, token failed' });
