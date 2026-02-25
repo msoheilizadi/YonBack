@@ -13,6 +13,7 @@ router.post("/", protect, async (req, res) => {
       imageUrl,
       audioUrl,
       category,
+      album, // 👈 اضافه شد (برای دریافت نام آلبوم از Postman)
       duration,
     } = req.body;
 
@@ -29,6 +30,7 @@ router.post("/", protect, async (req, res) => {
       imageUrl,
       audioUrl,
       category,
+      album, // 👈 اضافه شد (برای ذخیره در دیتابیس)
       duration,
     });
 
@@ -38,15 +40,18 @@ router.post("/", protect, async (req, res) => {
   }
 });
 
-// GET: دریافت لیست آهنگ‌ها (با قابلیت صفحه‌بندی)
+// GET: دریافت لیست آهنگ‌ها (با قابلیت فیلتر آلبوم)
 router.get("/", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
-    const { category } = req.query;
-    const whereClause = category ? { category } : {};
+    const { category, album } = req.query; 
+    
+    const whereClause = {};
+    if (category) whereClause.category = category;
+    if (album) whereClause.album = album;
 
     const { count, rows } = await Song.findAndCountAll({
       where: whereClause,
