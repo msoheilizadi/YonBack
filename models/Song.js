@@ -1,7 +1,7 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/db');
+const { DataTypes } = require("sequelize");
+const { sequelize } = require("../config/db");
 
-const Song = sequelize.define('Song', {
+const Song = sequelize.define("Song", {
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
@@ -18,16 +18,20 @@ const Song = sequelize.define('Song', {
     type: DataTypes.TEXT,
   },
   imageUrl: {
-    type: DataTypes.STRING(1000), 
+    type: DataTypes.STRING(1000),
     allowNull: false,
   },
   audioUrl: {
-    type: DataTypes.STRING(1000), 
+    type: DataTypes.STRING(1000),
     allowNull: false,
   },
   category: {
-    type: DataTypes.STRING, 
-    defaultValue: 'Music',
+    type: DataTypes.STRING,
+    defaultValue: "Music",
+  },
+  album: {
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   duration: {
     type: DataTypes.INTEGER,
