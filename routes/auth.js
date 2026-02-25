@@ -5,14 +5,14 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { protect } = require("../middleware/authMiddleware");
 
-// --- 1. تنظیمات آپلود روی لیارا (S3) با AWS SDK v3 ---
+// --- تنظیمات آپلود روی لیارا (S3) ---
 const multer = require("multer");
 const multerS3 = require("multer-s3");
-const { S3Client } = require("@aws-sdk/client-s3"); // 👈 ایمپورت جدید
+const { S3Client } = require("@aws-sdk/client-s3");
 const path = require("path");
 
 const s3 = new S3Client({
-  region: "default", // S3Client ورژن ۳ به این فیلد نیاز دارد (میتوانید همین default بگذارید)
+  region: "default",
   endpoint: process.env.LIARA_ENDPOINT,
   credentials: {
     accessKeyId: process.env.LIARA_ACCESS_KEY,
@@ -24,7 +24,7 @@ const upload = multer({
   storage: multerS3({
     s3: s3,
     bucket: process.env.LIARA_BUCKET_NAME,
-    acl: "public-read", // اجازه میدهد عکس در اپلیکیشن نمایش داده شود
+    acl: "public-read",
     key: function (req, file, cb) {
       cb(
         null,
@@ -32,7 +32,7 @@ const upload = multer({
       );
     },
   }),
-  limits: { fileSize: 5 * 1024 * 1024 }, // محدودیت حجم ۵ مگابایت
+  limits: { fileSize: 5 * 1024 * 1024 }, // محدودیت ۵ مگابایت
   fileFilter: function (req, file, cb) {
     const filetypes = /jpeg|jpg|png/;
     const extname = filetypes.test(
@@ -46,25 +46,33 @@ const upload = multer({
     }
   },
 });
-// ----------------------------------------
+
+// تابع تولید توکن با انقضای ۳۰ روز
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
+};
 
 // ثبت‌نام
 router.post("/register", async (req, res) => {
   const { name, email, password } = req.body;
   try {
-    if (!name || !email || !password)
+    if (!name || !email || !password) {
       return res.status(400).json({ message: "لطفاً تمام فیلدها را پر کنید" });
-    if (password.length < 6)
+    }
+    if (password.length < 6) {
       return res
         .status(400)
         .json({ message: "رمز عبور باید حداقل ۶ کاراکتر باشد" });
+    }
 
     const userExists = await User.findOne({ where: { email } });
-    if (userExists)
+    if (userExists) {
       return res.status(400).json({ message: "این ایمیل قبلاً ثبت شده است" });
+    }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+
     const user = await User.create({ name, email, password: hashedPassword });
 
     res.status(201).json({
@@ -74,7 +82,7 @@ router.post("/register", async (req, res) => {
       token: generateToken(user.id),
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: "خطا در سرور هنگام ثبت‌نام" });
   }
 });
 
@@ -92,18 +100,14 @@ router.post("/login", async (req, res) => {
         token: generateToken(user.id),
       });
     } else {
-      res.status(401).json({ message: "Invalid email or password" });
+      res.status(401).json({ message: "ایمیل یا رمز عبور اشتباه است" });
     }
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: "خطا در سرور هنگام ورود" });
   }
 });
 
-function generateToken(id) {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
-}
-
-// --- 2. روت آپدیت پروفایل با قابلیت آپلود فایل ---
+// آپدیت پروفایل همراه با آپلود عکس
 router.put(
   "/update-profile",
   protect,
@@ -112,35 +116,35 @@ router.put(
     try {
       const user = req.user;
 
-      if (user) {
-        user.name = req.body.name || user.name;
-        user.mobile = req.body.mobile || user.mobile;
-        user.language = req.body.language || user.language;
-        user.notificationTime =
-          req.body.notificationTime || user.notificationTime;
-
-        // دریافت لینک عکس از لیارا و ذخیره در دیتابیس
-        if (req.file) {
-          user.profileImage = req.file.location;
-        }
-
-        const updatedUser = await user.save();
-
-        res.json({
-          id: updatedUser.id,
-          name: updatedUser.name,
-          email: updatedUser.email,
-          mobile: updatedUser.mobile,
-          language: updatedUser.language,
-          notificationTime: updatedUser.notificationTime,
-          profileImage: updatedUser.profileImage,
-          token: generateToken(updatedUser.id),
-        });
-      } else {
-        res.status(404).json({ message: "User not found" });
+      if (!user) {
+        return res.status(404).json({ message: "کاربر یافت نشد" });
       }
+
+      user.name = req.body.name || user.name;
+      user.mobile = req.body.mobile || user.mobile;
+      user.language = req.body.language || user.language;
+      user.notificationTime =
+        req.body.notificationTime || user.notificationTime;
+
+      // دریافت لینک عکس از لیارا و ذخیره
+      if (req.file && req.file.location) {
+        user.profileImage = req.file.location;
+      }
+
+      const updatedUser = await user.save();
+
+      res.json({
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        mobile: updatedUser.mobile,
+        language: updatedUser.language,
+        notificationTime: updatedUser.notificationTime,
+        profileImage: updatedUser.profileImage,
+        token: generateToken(updatedUser.id),
+      });
     } catch (error) {
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: "خطا در بروزرسانی پروفایل" });
     }
   },
 );
@@ -160,10 +164,10 @@ router.get("/profile", protect, async (req, res) => {
         notificationTime: user.notificationTime,
       });
     } else {
-      res.status(404).json({ message: "User not found" });
+      res.status(404).json({ message: "کاربر یافت نشد" });
     }
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: "خطا در دریافت پروفایل" });
   }
 });
 

@@ -3,21 +3,16 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USER,
-  process.env.DB_PASS,
-  {
-    host: process.env.DB_HOST,
-    dialect: 'postgres',
-    logging: false, // برای تمیز ماندن کنسول
-  }
-);
+// 👈 حالا Sequelize کل اطلاعات اتصال را از یک رشته (DATABASE_URL) می‌خواند
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
+  dialect: 'postgres',
+  logging: false, // برای تمیز ماندن کنسول
+});
 
 const connectDB = async () => {
   try {
     await sequelize.authenticate();
-    console.log('PostgreSQL Connected Successfully.');
+    console.log('PostgreSQL Connected Successfully via DATABASE_URL.');
   } catch (error) {
     console.error('Unable to connect to the database:', error);
   }

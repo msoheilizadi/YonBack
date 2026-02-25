@@ -15,10 +15,17 @@ connectDB();
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/songs', require('./routes/songs'));
 app.use('/api/zarat', require('./routes/zarat'));
+app.use('/api/preferences', require('./routes/preferences'));
 
 require('./models/User');
 require('./models/Song');
 require('./models/Zarat'); 
+require('./models/UserPreference');
+
+app.use((err, req, res, next) => {
+  console.error("🔥 Server Error:", err.stack);
+  res.status(500).json({ message: "خطای سرور. لطفاً دوباره تلاش کنید." });
+});
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 

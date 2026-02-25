@@ -18,19 +18,19 @@ const Song = sequelize.define('Song', {
     type: DataTypes.TEXT,
   },
   imageUrl: {
-    type: DataTypes.STRING,
+    type: DataTypes.STRING(1000), 
     allowNull: false,
   },
   audioUrl: {
-    type: DataTypes.STRING,
+    type: DataTypes.STRING(1000), 
     allowNull: false,
   },
   category: {
-    type: DataTypes.ENUM('Meditation', 'Sleep', 'Music', 'Kid'),
+    type: DataTypes.STRING, 
     defaultValue: 'Music',
   },
   duration: {
-    type: DataTypes.INTEGER, // ثانیه
+    type: DataTypes.INTEGER,
   },
 });
 
