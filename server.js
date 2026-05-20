@@ -16,6 +16,7 @@ app.use("/api/auth", require("./routes/auth"));
 app.use("/api/songs", require("./routes/songs"));
 app.use("/api/zarat", require("./routes/zarat"));
 app.use("/api/preferences", require("./routes/preferences"));
+app.use("/api/admin", require("./routes/admin"));
 
 require("./models/User");
 require("./models/Song");

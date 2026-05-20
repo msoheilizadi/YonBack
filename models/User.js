@@ -1,7 +1,7 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/db');
+const { DataTypes } = require("sequelize");
+const { sequelize } = require("../config/db");
 
-const User = sequelize.define('User', {
+const User = sequelize.define("User", {
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
@@ -25,7 +25,7 @@ const User = sequelize.define('User', {
   },
   profileImage: {
     // تغییر مهم: استفاده از TEXT به جای STRING برای ذخیره عکس‌های Base64 طولانی
-    type: DataTypes.TEXT, 
+    type: DataTypes.TEXT,
     defaultValue: "",
   },
   mobile: {
@@ -41,8 +41,13 @@ const User = sequelize.define('User', {
     allowNull: true,
   },
   activeToken: {
-    type: DataTypes.TEXT, 
+    type: DataTypes.TEXT,
     allowNull: true,
+  },
+  role: {
+    type: DataTypes.STRING,
+    defaultValue: "user",
+    allowNull: false,
   }
 });
 
