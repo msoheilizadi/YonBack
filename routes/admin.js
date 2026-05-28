@@ -4,50 +4,118 @@ const multer = require("multer");
 const multerS3 = require("multer-s3");
 const { S3Client } = require("@aws-sdk/client-s3");
 const path = require("path");
+const fs = require("fs");
 const { protect, admin } = require("../middleware/adminMiddleware");
 const Song = require("../models/Song");
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 
-// تنظیمات S3 (لیارا) – مشابه auth.js
-const s3 = new S3Client({
-  region: "default",
-  endpoint: process.env.LIARA_ENDPOINT,
-  credentials: {
-    accessKeyId: process.env.LIARA_ACCESS_KEY,
-    secretAccessKey: process.env.LIARA_SECRET_KEY,
-  },
-});
+// تعیین نحوه ذخیره‌سازی بر اساس محیط
+const USE_LOCAL =
+  process.env.USE_LOCAL_STORAGE === "true" ||
+  process.env.NODE_ENV === "development";
 
-// آپلود فایل‌ها در دو فیلد مجزا
-const upload = multer({
-  storage: multerS3({
-    s3: s3,
-    bucket: process.env.LIARA_BUCKET_NAME,
-    acl: "public-read",
-    key: function (req, file, cb) {
-      const folder = file.fieldname === "image" ? "songs-images" : "songs-audios";
-      const ext = path.extname(file.originalname);
-      cb(null, `${folder}/song-${Date.now()}${ext}`);
+let upload;
+
+if (USE_LOCAL) {
+  // ---------- ذخیره‌سازی محلی ----------
+  // اطمینان از وجود پوشه‌های مورد نیاز
+  const uploadDir = path.join(__dirname, "../uploads");
+  const imagesDir = path.join(uploadDir, "songs-images");
+  const audiosDir = path.join(uploadDir, "songs-audios");
+
+  [uploadDir, imagesDir, audiosDir].forEach((dir) => {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  });
+
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      const folder =
+        file.fieldname === "image" ? "songs-images" : "songs-audios";
+      cb(null, path.join(uploadDir, folder));
     },
-  }),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-  fileFilter: (req, file, cb) => {
-    if (file.fieldname === "image") {
-      const allowed = /jpeg|jpg|png/;
-      const isValid = allowed.test(path.extname(file.originalname).toLowerCase()) && allowed.test(file.mimetype);
-      return isValid ? cb(null, true) : cb(new Error("فرمت تصویر باید jpeg، jpg یا png باشد"));
-    } else if (file.fieldname === "audio") {
-      const allowed = /mp3|mpeg|wav/;
-      const isValid = allowed.test(path.extname(file.originalname).toLowerCase()) && /audio/.test(file.mimetype);
-      return isValid ? cb(null, true) : cb(new Error("فرمت صوتی باید mp3 یا wav باشد"));
-    }
-    cb(new Error("فیلد نامعتبر"));
-  },
-}).fields([
-  { name: "image", maxCount: 1 },
-  { name: "audio", maxCount: 1 },
-]);
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `song-${Date.now()}${ext}`);
+    },
+  });
+
+  upload = multer({
+    storage: storage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (file.fieldname === "image") {
+        const allowed = /jpeg|jpg|png/;
+        const isValid =
+          allowed.test(path.extname(file.originalname).toLowerCase()) &&
+          allowed.test(file.mimetype);
+        return isValid
+          ? cb(null, true)
+          : cb(new Error("فرمت تصویر باید jpeg، jpg یا png باشد"));
+      } else if (file.fieldname === "audio") {
+        const allowed = /mp3|mpeg|wav/;
+        const isValid =
+          allowed.test(path.extname(file.originalname).toLowerCase()) &&
+          /audio/.test(file.mimetype);
+        return isValid
+          ? cb(null, true)
+          : cb(new Error("فرمت صوتی باید mp3 یا wav باشد"));
+      }
+      cb(new Error("فیلد نامعتبر"));
+    },
+  }).fields([
+    { name: "image", maxCount: 1 },
+    { name: "audio", maxCount: 1 },
+  ]);
+} else {
+  // ---------- ذخیره‌سازی در لیارا (S3) ----------
+  const s3 = new S3Client({
+    region: "default",
+    endpoint: process.env.LIARA_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.LIARA_ACCESS_KEY,
+      secretAccessKey: process.env.LIARA_SECRET_KEY,
+    },
+  });
+
+  upload = multer({
+    storage: multerS3({
+      s3: s3,
+      bucket: process.env.LIARA_BUCKET_NAME,
+      acl: "public-read",
+      key: function (req, file, cb) {
+        const folder =
+          file.fieldname === "image" ? "songs-images" : "songs-audios";
+        const ext = path.extname(file.originalname);
+        cb(null, `${folder}/song-${Date.now()}${ext}`);
+      },
+    }),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (file.fieldname === "image") {
+        const allowed = /jpeg|jpg|png/;
+        const isValid =
+          allowed.test(path.extname(file.originalname).toLowerCase()) &&
+          allowed.test(file.mimetype);
+        return isValid
+          ? cb(null, true)
+          : cb(new Error("فرمت تصویر باید jpeg، jpg یا png باشد"));
+      } else if (file.fieldname === "audio") {
+        const allowed = /mp3|mpeg|wav/;
+        const isValid =
+          allowed.test(path.extname(file.originalname).toLowerCase()) &&
+          /audio/.test(file.mimetype);
+        return isValid
+          ? cb(null, true)
+          : cb(new Error("فرمت صوتی باید mp3 یا wav باشد"));
+      }
+      cb(new Error("فیلد نامعتبر"));
+    },
+  }).fields([
+    { name: "image", maxCount: 1 },
+    { name: "audio", maxCount: 1 },
+  ]);
+}
 
 // ------------------- ایجاد آهنگ جدید با آپلود فایل -------------------
 router.post("/songs", protect, admin, (req, res) => {
@@ -57,14 +125,29 @@ router.post("/songs", protect, admin, (req, res) => {
     }
 
     try {
-      const { title, subtitle, description, category, album, duration } = req.body;
+      const { title, subtitle, description, category, album, duration } =
+        req.body;
 
       if (!req.files?.image || !req.files?.audio) {
-        return res.status(400).json({ message: "تصویر و فایل صوتی الزامی است" });
+        return res
+          .status(400)
+          .json({ message: "تصویر و فایل صوتی الزامی است" });
       }
 
-      const imageUrl = req.files.image[0].location;
-      const audioUrl = req.files.audio[0].location;
+      let imageUrl, audioUrl;
+
+      if (USE_LOCAL) {
+        // اصلاح: استفاده از مسیر نسبی نسبت به پوشه uploads
+        const uploadDir = path.join(__dirname, "../uploads");
+        const imageRelative = path.relative(uploadDir, req.files.image[0].path);
+        const audioRelative = path.relative(uploadDir, req.files.audio[0].path);
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        imageUrl = `${baseUrl}/uploads/${imageRelative}`;   // مثال: /uploads/songs-images/song-123.jpg
+        audioUrl = `${baseUrl}/uploads/${audioRelative}`;   // مثال: /uploads/songs-audios/song-456.mp3
+      } else {
+        imageUrl = req.files.image[0].location;
+        audioUrl = req.files.audio[0].location;
+      }
 
       const song = await Song.create({
         title,
@@ -91,7 +174,8 @@ router.put("/songs/:id", protect, admin, async (req, res) => {
     const song = await Song.findByPk(req.params.id);
     if (!song) return res.status(404).json({ message: "آهنگ یافت نشد" });
 
-    const { title, subtitle, description, category, album, duration } = req.body;
+    const { title, subtitle, description, category, album, duration } =
+      req.body;
     song.title = title || song.title;
     song.subtitle = subtitle || song.subtitle;
     song.description = description || song.description;
@@ -127,14 +211,15 @@ router.get("/songs", protect, admin, async (req, res) => {
     res.status(500).json({ message: "خطا در دریافت لیست" });
   }
 });
+
 // ======================== مدیریت کاربران ========================
 
 // GET: دریافت لیست همه کاربران (فقط ادمین)
 router.get("/users", protect, admin, async (req, res) => {
   try {
     const users = await User.findAll({
-      attributes: { exclude: ['password', 'activeToken'] },
-      order: [['createdAt', 'DESC']]
+      attributes: { exclude: ["password", "activeToken"] },
+      order: [["createdAt", "DESC"]],
     });
     res.json(users);
   } catch (error) {
@@ -164,14 +249,22 @@ router.delete("/users/:id", protect, admin, async (req, res) => {
 router.put("/users/:id/role", protect, admin, async (req, res) => {
   try {
     const { role } = req.body;
-    if (!['user', 'admin'].includes(role)) {
+    if (!["user", "admin"].includes(role)) {
       return res.status(400).json({ message: "نقش نامعتبر است" });
     }
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ message: "کاربر یافت نشد" });
     user.role = role;
     await user.save();
-    res.json({ message: "نقش کاربر با موفقیت به‌روز شد", user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    res.json({
+      message: "نقش کاربر با موفقیت به‌روز شد",
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "خطا در تغییر نقش" });
@@ -180,13 +273,17 @@ router.put("/users/:id/role", protect, admin, async (req, res) => {
 
 // POST: ایجاد کاربر جدید توسط ادمین (می‌تواند ادمین یا معمولی باشد)
 router.post("/users", protect, admin, async (req, res) => {
-  const { name, email, password, role = 'user' } = req.body;
+  const { name, email, password, role = "user" } = req.body;
   try {
     if (!name || !email || !password) {
-      return res.status(400).json({ message: "نام، ایمیل و رمز عبور الزامی است" });
+      return res
+        .status(400)
+        .json({ message: "نام، ایمیل و رمز عبور الزامی است" });
     }
     if (password.length < 6) {
-      return res.status(400).json({ message: "رمز عبور باید حداقل ۶ کاراکتر باشد" });
+      return res
+        .status(400)
+        .json({ message: "رمز عبور باید حداقل ۶ کاراکتر باشد" });
     }
     const existing = await User.findOne({ where: { email } });
     if (existing) {
@@ -198,10 +295,14 @@ router.post("/users", protect, admin, async (req, res) => {
       name,
       email,
       password: hashedPassword,
-      role: role === 'admin' ? 'admin' : 'user'
+      role: role === "admin" ? "admin" : "user",
     });
     // حذف فیلدهای حساس از خروجی
-    const { password: _, activeToken: __, ...userWithoutSensitive } = newUser.toJSON();
+    const {
+      password: _,
+      activeToken: __,
+      ...userWithoutSensitive
+    } = newUser.toJSON();
     res.status(201).json(userWithoutSensitive);
   } catch (error) {
     console.error(error);
@@ -220,7 +321,11 @@ router.put("/users/:id", protect, admin, async (req, res) => {
     if (email && email !== user.email) {
       const existing = await User.findOne({ where: { email } });
       if (existing) {
-        return res.status(400).json({ message: "این ایمیل قبلاً توسط کاربر دیگری استفاده شده است" });
+        return res
+          .status(400)
+          .json({
+            message: "این ایمیل قبلاً توسط کاربر دیگری استفاده شده است",
+          });
       }
     }
 
@@ -229,7 +334,8 @@ router.put("/users/:id", protect, admin, async (req, res) => {
     if (email) user.email = email;
     if (mobile !== undefined) user.mobile = mobile;
     if (language) user.language = language;
-    if (notificationTime !== undefined) user.notificationTime = notificationTime;
+    if (notificationTime !== undefined)
+      user.notificationTime = notificationTime;
 
     await user.save();
 
